@@ -1,0 +1,99 @@
+---
+sidebar_position: 1
+sidebar_label: 介绍
+title: LauncherUi
+description: 用 C# 声明控件树，在 PVZRH 游戏画面上绘制原生 Android 插件界面。
+---
+
+# LauncherUi
+
+`PVZRH.LauncherUi` 是给 BepInEx 插件用的 UI SDK。插件在 C# 里声明一棵控件树，PVZRH Android 启动器在游戏画面上用原生 View 画出来：每个插件一个悬浮按钮（FAB），点开后是一块可拖动的面板。
+
+你不需要自己画 IMGUI，也不需要往游戏里塞 Android 布局文件。写树、收事件、改属性即可。
+
+## 它解决什么问题
+
+融合版 Android 端的模组跑在 IL2CPP + BepInEx 里。游戏进程里没有现成的模组设置页。启动器已经叠在游戏 Activity 上，于是把「画 UI」这件事交给启动器：
+
+1. 启动器在游戏进程里起一个只监听 `127.0.0.1` 的 TCP 服务。
+2. 把端口和口令写进 BepInEx 根目录的 `launcher-bridge.json`。
+3. 插件 `Load()` 时连接、握手、提交控件树。
+4. 玩家点开关、拖滑条，启动器把事件发回插件。
+
+```text
+BepInEx 插件 (C# / IL2CPP)
+        │  长度前缀 UTF-8 JSON（协议 v1）
+        ▼
+Android 启动器 BridgeServer
+        │
+        ▼
+UiHost：每个会话一个 FAB + 面板
+        │
+        ▼
+UiInflater：JSON 树 → 原生 Android View
+```
+
+## 你能做什么
+
+- 用 `Ui.Column` / `Ui.Switch` / `Ui.Slider` 等工厂方法拼界面。
+- 用 `LauncherUiClient.SetTree` 整树替换，或 `Update` 改单个控件属性。
+- 用 `PanelStyle` / `FabStyle` / `SetIconPng` 改面板尺寸、颜色和悬浮按钮。
+- 用 `UnityDispatch` 把读植物、改阳光这类操作派回 Unity 主线程，避免在 TCP 接收线程上崩游戏。
+
+## 运行前提
+
+| 项 | 要求 |
+| --- | --- |
+| 启动方式 | 必须用 **PVZRH Android 启动器** 进游戏，否则不会写 `launcher-bridge.json` |
+| 插件类型 | BepInEx Unity IL2CPP，`BasePlugin` |
+| 目标框架 | `netstandard2.1` |
+| 依赖插件 | `[BepInDependency(LauncherUiPlugin.PluginGuid)]`，GUID 为 `com.pvzrh.launcher.ui` |
+| 部署 | `PVZRH.LauncherUi.dll` 和你的插件 DLL 都放到 `BepInEx/plugins/` |
+
+发现文件默认路径：
+
+```text
+/storage/emulated/0/PVZRH_Launcher/com.LanPiaoPiao.PlantsVsZombiesRH/BepInEx/launcher-bridge.json
+```
+
+## 最小例子
+
+```csharp
+using BepInEx;
+using BepInEx.Unity.IL2CPP;
+using PVZRH.LauncherUi;
+
+[BepInPlugin("com.example.cheatmenu", "Cheat Menu", "1.0.0")]
+[BepInDependency(LauncherUiPlugin.PluginGuid)]
+public class CheatMenuPlugin : BasePlugin
+{
+    public override void Load()
+    {
+        var ui = LauncherUiClient.Connect("com.example.cheatmenu", "Cheat Menu");
+        ui.OnEvent += e =>
+        {
+            if (e.WidgetId == "god")
+                Log.LogInfo("无敌 = " + e.AsBool());
+        };
+        ui.SetTree(
+            Ui.Column("root",
+                Ui.Text("t", "Cheat Menu", "title"),
+                Ui.Switch("god", "无敌", false)
+            ).With("gap", 8)
+        );
+    }
+}
+```
+
+进游戏后，画面边缘会出现这个插件的悬浮按钮。点开即可操作。
+
+## 文档目录
+
+- [快速上手](./getting-started.mdx) — 引用 DLL、连接、部署
+- [控件](./widgets/overview.mdx) — 布局、展示、输入与通用样式
+- [事件与更新](./events.mdx) — `click` / `change` / `submit`，局部刷新
+- [面板与悬浮按钮](./chrome.mdx) — 尺寸、颜色、图标
+- [Unity 主线程](./threading.mdx) — 什么时候必须 `Post` / `RunWhen`
+- [发现与协议](./protocol.mdx) — `launcher-bridge.json` 和报文格式
+- [API 一览](./api.mdx) — 公开类型与方法
+- [常见问题](./troubleshooting.mdx) — 连不上、闪退、控件对不上

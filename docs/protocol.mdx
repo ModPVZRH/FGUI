@@ -1,0 +1,214 @@
+---
+sidebar_position: 7
+sidebar_label: 发现与协议
+title: 发现与协议
+description: launcher-bridge.json、帧格式，以及插件与启动器之间的报文。
+---
+
+# 发现与协议
+
+普通插件用 `LauncherUiClient` 即可，不必手写报文。这一页说明启动器实际在传什么，方便排查或自己实现客户端。
+
+当前协议版本：**1**（C# `FrameCodec.Version` 与 Android `BridgeProtocol.VERSION` 必须一致）。
+
+## 发现文件
+
+启动器在游戏进程里绑定 `127.0.0.1` 的临时端口，并把连接信息写到：
+
+```text
+{BepInEx 根目录}/launcher-bridge.json
+```
+
+真机上通常是：
+
+```text
+/storage/emulated/0/PVZRH_Launcher/com.LanPiaoPiao.PlantsVsZombiesRH/BepInEx/launcher-bridge.json
+```
+
+```json
+{
+  "protocol": 1,
+  "host": "127.0.0.1",
+  "port": 43123,
+  "token": "0123456789abcdef0123456789abcdef"
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `protocol` | 必须等于客户端的 `FrameCodec.Version`（1） |
+| `host` | 缺省按 `127.0.0.1` |
+| `port` | 1–65535 |
+| `token` | 32 位小写 hex，握手时原样送回 |
+
+文件由启动器在 bridge 启动时写入，进程退出时删除。必须用启动器进游戏；直接开原版 APK 不会有这个文件。
+
+C# 读取：
+
+```csharp
+var info = BridgeDiscoveryInfo.Load(BridgeDiscoveryInfo.DefaultPath(Paths.BepInExRootPath));
+```
+
+## 帧格式
+
+每条消息是一帧：
+
+```text
+┌─────────────┬──────────────────────────┐
+│ 4 字节长度   │ UTF-8 JSON 正文          │
+│ 大端 uint32  │ 最多 256 KiB             │
+└─────────────┴──────────────────────────┘
+```
+
+长度为 0 的帧会被客户端忽略。超出 `256 * 1024` 字节会断开。共享输出流时必须自行串行化写入；`LauncherUiClient` 内部已经加了写锁。
+
+## 插件 → 启动器
+
+每条 JSON 都带 `"v": 1` 和 `"type"`。
+
+### hello
+
+连接后的第一帧。`token` 必须和发现文件一致，否则启动器直接关连接。
+
+```json
+{
+  "v": 1,
+  "type": "hello",
+  "pluginId": "com.example.mymod",
+  "name": "My Mod",
+  "version": "1.0.0",
+  "token": "..."
+}
+```
+
+### set_tree
+
+整棵控件树。`tree` 是一个节点对象：
+
+```json
+{
+  "v": 1,
+  "type": "set_tree",
+  "tree": {
+    "id": "root",
+    "type": "column",
+    "props": { "gap": 8 },
+    "children": []
+  }
+}
+```
+
+节点固定四个键：`id`、`type`、`props`、`children`。缺 `id` 时启动器当成 `""`；缺 `type` 当成 `column`。
+
+### update
+
+```json
+{
+  "v": 1,
+  "type": "update",
+  "widgetId": "god",
+  "props": { "value": true }
+}
+```
+
+### toast / close
+
+```json
+{ "v": 1, "type": "toast", "text": "已保存" }
+{ "v": 1, "type": "close", "reason": "reset" }
+```
+
+`reason` 可以是 JSON `null`。
+
+### set_icon
+
+```json
+{
+  "v": 1,
+  "type": "set_icon",
+  "mime": "image/png",
+  "data": "<base64 或 data URI>"
+}
+```
+
+### set_panel
+
+字段直接摊在消息上，没有嵌套 `panel` 对象。颜色键省略表示用主题默认。
+
+```json
+{
+  "v": 1,
+  "type": "set_panel",
+  "width": 320,
+  "height": 420,
+  "cornerRadius": 8,
+  "background": "#191C1B",
+  "headerColor": "#005047",
+  "titleColor": "#B2DFDB",
+  "elevation": 16
+}
+```
+
+### set_fab
+
+```json
+{
+  "v": 1,
+  "type": "set_fab",
+  "label": "CM",
+  "size": 48,
+  "background": "#00897B",
+  "shape": "circle",
+  "cornerRadius": 12
+}
+```
+
+`shape`：`circle`（默认）、`rounded`（也认 `roundrect` / `rect`）、`square`。
+
+## 启动器 → 插件
+
+### hello_ack
+
+客户端在 `hello` 之后最多等 5 秒。必须带非空 `sessionId`。
+
+```json
+{
+  "v": 1,
+  "type": "hello_ack",
+  "sessionId": "8f3c...",
+  "protocol": 1
+}
+```
+
+`protocol` 若出现且不等于 1，客户端会拒绝。
+
+### event
+
+```json
+{
+  "v": 1,
+  "type": "event",
+  "widgetId": "god",
+  "name": "change",
+  "value": true
+}
+```
+
+`value` 只保留 JSON 的 bool / number / string；其它类型在 C# 侧会变成 `null`。
+
+### lifecycle
+
+```json
+{ "v": 1, "type": "lifecycle", "state": "destroyed" }
+```
+
+`state` 约定为 `shown` / `hidden` / `destroyed`。当前实现关闭会话时会尽力发 `destroyed`。
+
+## 握手失败的常见表现
+
+| 现象 | 原因 |
+| --- | --- |
+| 发现文件不存在 | 不是从启动器进的游戏，或 bridge 还没起来 |
+| 连上立刻被断开 | `token` 不对 |
+| 5 秒 `TimeoutException` | 启动器没回 `hello_ack` |
+| `protocol X is incompatible` | 启动器和 SDK 版本对不上 |

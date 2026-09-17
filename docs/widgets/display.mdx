@@ -1,0 +1,86 @@
+---
+sidebar_position: 3
+sidebar_label: 展示
+title: 展示控件
+description: 文本、Markdown、图片、进度条、徽章和图标。
+---
+
+# 展示控件
+
+这些控件不接收点击事件（进度条也只是展示）。改内容用 `Update` 或重新 `SetTree`。
+
+## Text
+
+```csharp
+Ui.Text("title", "作弊菜单", "title");
+Ui.Text("hint", "改完后下一关生效", "caption");
+Ui.Text("err", "连接失败", "error");
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `text` | 显示的字符串 |
+| `style` | `title` / `subtitle` / `body`（默认） / `caption` / `error` |
+
+字号大约：标题 16sp 加粗，副标题 14sp，正文 13sp，说明 11sp 弱化色，错误用主题错误色。还可用 `.TextSize(18)` 覆盖。
+
+## Markdown
+
+启动器只做了很小的子集，不是完整 Markdown 引擎：
+
+- 行首 `#` / `##` / `###` 视为标题（一级带强调色）
+- `**粗体**`
+- `` `行内代码` ``
+
+```csharp
+Ui.Markdown("readme", "# 说明\n\n打开 **无敌** 后不会扣血。");
+```
+
+`Update` 改 `text` 会重新渲染。
+
+## Image
+
+```csharp
+Ui.Image("cover", "data:image/png;base64,iVBOR...", 64, 64);
+Ui.Image("file", "/storage/emulated/0/PVZRH_Launcher/.../icon.png", 48, 48);
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `src` | `data:image...;base64,...` 或本地文件路径 |
+| `width` / `height` | dp；`0` 表示用图片固有尺寸 |
+
+http(s) URL **不会**下载。文件必须是游戏进程能读到的路径。
+
+## Progress
+
+```csharp
+Ui.Progress("load", 0.35, label: "加载中");
+Ui.Progress("wait", 0, indeterminate: true, label: "请稍候");
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `value` | 确定进度。`0..1` 按比例；大于 1 时按百分数 `/100` 再夹到 0..1 |
+| `indeterminate` | `true` 时忽略 `value`，一直转 |
+| `label` | 可选说明文字 |
+
+进度变化时对这个 id 做 `Update`，只改 `value` 即可。
+
+## Badge
+
+```csharp
+Ui.Badge("ver", "实验");
+```
+
+紧凑芯片，只显示 `text`。
+
+## Icon
+
+C# 工厂把名字写到 `symbol`，但启动器 inflater 读的是 `text`。要真正显示，请同时写 `text`：
+
+```csharp
+Ui.Icon("star", "★").With("text", "★");
+```
+
+它就是一个大号 TextView（约 22sp），可以放 emoji 或单个字符。需要位图请用 `Image` 或 [面板图标](../chrome.mdx)。

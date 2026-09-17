@@ -1,0 +1,108 @@
+---
+sidebar_position: 9
+sidebar_label: 常见问题
+title: 常见问题
+description: 连不上启动器、主线程崩溃、控件对不上显示时怎么查。
+---
+
+# 常见问题
+
+## 连接
+
+### `launcher-bridge.json` 找不到
+
+异常信息会包含 *Start the game from the PVZRH Android launcher*。
+
+- 必须用启动器包名 `com.pvzrh.android.launcher` 启动游戏，不要直接开 `com.LanPiaoPiao.PlantsVsZombiesRH`。
+- 发现文件在 BepInEx 根目录，不是游戏包内：
+
+  ```text
+  /storage/emulated/0/PVZRH_Launcher/com.LanPiaoPiao.PlantsVsZombiesRH/BepInEx/launcher-bridge.json
+  ```
+
+- `Connect` 写在 `Load()` 里通常没问题：BepInEx 加载时 bridge 已经在听。若你在更早的静态构造里连，可能文件还没写好。
+
+### 5 秒超时 / 连接被立刻关掉
+
+- 超时：`hello_ack` 没来。启动器卡住或 token 对不上时也会这样。
+- 立刻 EOF：启动器认为 token 无效，直接关 socket。
+- 先确认发现文件里的 `protocol` 是 `1`，再确认 SDK 也是 1.0.0 / `FrameCodec.Version == 1`。
+
+### `protocol X is incompatible`
+
+启动器和 `PVZRH.LauncherUi.dll` 不是同一代协议。换一套匹配的启动器 + SDK，不要混用旧 DLL。
+
+### 画面上没有 FAB
+
+1. `PVZRH.LauncherUi.dll` 是否在 `BepInEx/plugins/`。
+2. 你的插件是否加了 `[BepInDependency(LauncherUiPlugin.PluginGuid)]`。
+3. `Load()` 里 `Connect` 是否被 catch 掉却没打日志。
+4. 看 `BepInEx/LogOutput.log` 里有没有 `Launcher UI client loaded` 和 `Bridge hello: ...`。
+
+## 运行时
+
+### 一点开关游戏就闪退
+
+几乎都是在 TCP 线程上碰了 Unity 对象。把读 `Board`、改阳光、遍历植物放到：
+
+```csharp
+LauncherUiClient.PostToUnity(() => { /* 游戏 API */ });
+```
+
+关卡对象可能还没创建时，用 `RunWhen` 等 `Board.Instance != null`。见 [Unity 主线程](./threading.mdx)。
+
+### 点了控件但回调没走进来
+
+- `id` 是否和 `OnEvent` 里判断的一致。
+- `OnEvent` 里抛错会被吞掉。回调最外层自己 try/catch 打日志。
+- `List` 会发 `change` 和 `click` 各一次，不要只监听了另一个名字。
+
+### `Update` 之后又收到一次事件
+
+正常的 inflater 在应用 `Update` 时会关掉回发。若你看到循环，检查是不是 `OnEvent` 里又 `SetTree` 出了新控件、用户操作叠在一起。滑条会在拖动中连续 `change`，不要每次都 `SetTree`。
+
+## 界面
+
+### 图标控件是空白的
+
+`Ui.Icon` 写入 `symbol`，启动器画的是 `text`：
+
+```csharp
+Ui.Icon("star", "★").With("text", "★");
+```
+
+`Ui.IconButton` 同理，补 `.With("label", "×")`。
+
+### 描边按钮看起来仍是填充的
+
+启动器只把 `style == "outline"` 当成描边。不要传 `"outlined"`：
+
+```csharp
+Ui.Button("cancel", "取消", style: "outline");
+```
+
+### 面板尺寸没按你设的来
+
+启动器会夹紧：宽 200–480、高 220–640、圆角 0–16、阴影 0–24。FAB 尺寸 36–64，标签最多两个字符。
+
+### 数字输入没有夹在 min/max 里
+
+`NumberField` 的 `min` / `max` / `step` 目前只随 JSON 带过去，inflater 不强制。在 `OnEvent` 里自己 `Math.Clamp`，再 `Update` 写回 `value`。
+
+### Markdown 表格 / 链接没渲染
+
+启动器只认标题、`**粗体**`、行内代码。复杂文档请拆成 `Text` 或自己在插件里格式化。
+
+### 图片不显示
+
+`Image` 的 `src` 只支持 `data:image...;base64,...` 和本地文件。HTTP URL 不会下载。文件路径必须是游戏进程能读的（外部存储上的启动器数据目录通常可以）。
+
+## 部署
+
+### 改了 SDK 但设备上还是旧行为
+
+确认推上去的是新的 `PVZRH.LauncherUi.dll`。它本身也是插件，只更新你的模组 DLL 不够。
+
+### 依赖顺序不对
+
+没加 `BepInDependency` 时，你的 `Load()` 可能跑在 `LauncherUiPlugin` 前面，`UnityDispatch` 泵还没挂上。`Post` 仍会进队列，但 `IsUnityThread` 在泵起来之前一直是 `false`。

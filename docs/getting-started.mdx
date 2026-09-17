@@ -1,0 +1,178 @@
+---
+sidebar_position: 2
+sidebar_label: 快速上手
+title: 快速上手
+description: 引用 PVZRH.LauncherUi、连接启动器并在游戏内显示第一块面板。
+---
+
+# 快速上手
+
+本节从空插件走到游戏内能点的开关。默认你已经能编译并安装 BepInEx IL2CPP 插件。
+
+## 1. 引用程序集
+
+SDK 工程在启动器仓库：
+
+```text
+PVZRH.Android.Launcher/sdk/LauncherUi/
+```
+
+编译产物：
+
+```text
+sdk/LauncherUi/bin/Release/netstandard2.1/PVZRH.LauncherUi.dll
+```
+
+在你的插件 `csproj` 里加上引用（按实际路径改 `HintPath`）：
+
+```xml
+<ItemGroup>
+  <Reference Include="PVZRH.LauncherUi">
+    <HintPath>..\..\PVZRH.Android.Launcher\sdk\LauncherUi\bin\Release\netstandard2.1\PVZRH.LauncherUi.dll</HintPath>
+    <Private>true</Private>
+  </Reference>
+</ItemGroup>
+```
+
+`PVZRH.LauncherUi` 自己已经引用了 BepInEx / Il2CppInterop / UnityEngine，这些 DLL **不要**再随插件复制一份；游戏里的 BepInEx 会提供它们。你的插件工程里照常引用 BepInEx 即可。
+
+## 2. 声明依赖
+
+`PVZRH.LauncherUi.dll` 既是客户端库，也是一个 BepInEx 插件。其它插件必须等它先加载，才会挂上 Unity 主线程泵。
+
+```csharp
+using BepInEx;
+using BepInEx.Unity.IL2CPP;
+using PVZRH.LauncherUi;
+
+[BepInPlugin("com.example.mymod", "My Mod", "1.0.0")]
+[BepInDependency(LauncherUiPlugin.PluginGuid)] // "com.pvzrh.launcher.ui"
+public class MyMod : BasePlugin
+{
+    public override void Load() { }
+}
+```
+
+把 `PVZRH.LauncherUi.dll` **和** 你的插件 DLL 一起放到：
+
+```text
+/storage/emulated/0/PVZRH_Launcher/com.LanPiaoPiao.PlantsVsZombiesRH/BepInEx/plugins/
+```
+
+## 3. 连接并画出第一棵树
+
+`Connect` 会读发现文件、连 TCP、发 `hello`、等最多 5 秒的 `hello_ack`。必须从 **PVZRH Android 启动器** 进游戏，否则没有 `launcher-bridge.json`。
+
+```csharp
+using System;
+using System.IO;
+using BepInEx;
+using BepInEx.Unity.IL2CPP;
+using PVZRH.LauncherUi;
+
+[BepInPlugin("com.example.mymod", "My Mod", "1.0.0")]
+[BepInDependency(LauncherUiPlugin.PluginGuid)]
+public class MyMod : BasePlugin
+{
+    private LauncherUiClient? _ui;
+    private bool _god;
+    private int _sun = 150;
+
+    public override void Load()
+    {
+        try
+        {
+            _ui = LauncherUiClient.Connect("com.example.mymod", "My Mod", "1.0.0");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError("连接启动器 UI 失败: " + ex.Message);
+            return;
+        }
+
+        _ui.SetPanelStyle(new PanelStyle { Width = 320, Height = 420 });
+        _ui.SetFab(new FabStyle { Label = "MM" });
+        _ui.OnEvent += OnUiEvent;
+        _ui.OnDisconnected += () => Log.LogWarning("启动器 UI 已断开");
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
+        _ui?.SetTree(
+            Ui.Column("root",
+                Ui.Text("title", "My Mod", "title"),
+                Ui.Switch("god", "无敌", _god),
+                Ui.Slider("sun", "阳光", _sun, 0, 9990, 50),
+                Ui.Button("hello", "打招呼")
+            ).With("gap", 8).Padding(12)
+        );
+    }
+
+    private void OnUiEvent(UiEvent e)
+    {
+        switch (e.WidgetId)
+        {
+            case "god":
+                _god = e.AsBool();
+                break;
+            case "sun":
+                _sun = e.AsInt();
+                LauncherUiClient.PostToUnity(() => ApplySun(_sun));
+                break;
+            case "hello":
+                _ui?.Toast("Hello from My Mod");
+                break;
+        }
+    }
+
+    private void ApplySun(int value)
+    {
+        // 在这里碰 Board / GameAPP 等 Unity 对象
+    }
+}
+```
+
+`pluginId` 建议和 `[BepInPlugin]` 的 GUID 一致，启动器拿它区分会话。`pluginName` 会出现在面板标题上。
+
+## 4. 三种连接方式
+
+| 方法 | 用途 |
+| --- | --- |
+| `LauncherUiClient.Connect(pluginId, name, version)` | 插件内最常用。读 `Paths.BepInExRootPath/launcher-bridge.json` |
+| `ConnectFromBepInEx(bepInExRoot, ...)` | 你已经有 BepInEx 根路径，但不想依赖 `Paths` |
+| `Connect(discoveryFilePath, ...)` | 指定发现文件的绝对路径 |
+
+## 5. 控件树怎么写
+
+`Ui.*` 工厂返回 `UiNode`。布局控件用 `params UiNode[]` 收子节点；叶子控件用属性描述自己。链式方法改通用样式：
+
+```csharp
+Ui.Column("root",
+    Ui.Text("t", "标题", "title"),
+    Ui.Row("actions",
+        Ui.Button("ok", "确定"),
+        Ui.Button("cancel", "取消", style: "outline")
+    ).With("gap", 8)
+).With("gap", 8).Padding(12);
+```
+
+每个节点都要有 **稳定的 `id`**。事件和 `Update` 都靠它找控件，不要每次 `SetTree` 都换 id。
+
+完整控件列表见 [控件总览](./widgets/overview.mdx)。
+
+## 6. 事件在哪条线程
+
+`OnEvent`、`OnLifecycle`、`OnDisconnected` 都在 **TCP 接收线程** 上触发，不是 Unity 主线程。
+
+- 改自己的字段、`Update` / `SetTree` / `Toast`：可以直接做。
+- 读植物、改阳光、碰 `GameObject`：必须 `LauncherUiClient.PostToUnity` 或 `RunWhen`。详见 [Unity 主线程](./threading.mdx)。
+
+## 7. 进游戏检查
+
+1. 用启动器启动《植物大战僵尸融合版》。
+2. 等 BepInEx 加载完成。
+3. 游戏画面边缘出现你的 FAB（默认是插件名的一到两个字母）。
+4. 点开面板，拨开关，日志里应有对应输出。
+
+连不上时先看 [常见问题](./troubleshooting.mdx)。

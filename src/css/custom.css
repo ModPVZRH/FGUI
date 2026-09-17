@@ -1,0 +1,26 @@
+/**
+ * Palette aligned with the PVZRH Android launcher overlay theme.
+ */
+
+:root {
+  --ifm-color-primary: #00897b;
+  --ifm-color-primary-dark: #007b6f;
+  --ifm-color-primary-darker: #007469;
+  --ifm-color-primary-darkest: #005f56;
+  --ifm-color-primary-light: #009787;
+  --ifm-color-primary-lighter: #009e8d;
+  --ifm-color-primary-lightest: #00b3a0;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #80cbc4;
+  --ifm-color-primary-dark: #67c1b8;
+  --ifm-color-primary-darker: #5bbcb2;
+  --ifm-color-primary-darkest: #3da99e;
+  --ifm-color-primary-light: #99d5d0;
+  --ifm-color-primary-lighter: #a5dad5;
+  --ifm-color-primary-lightest: #c9e9e6;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}

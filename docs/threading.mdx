@@ -1,0 +1,97 @@
+---
+sidebar_position: 6
+sidebar_label: Unity 主线程
+title: Unity 主线程
+description: 在 TCP 回调里安全地读取和修改游戏对象。
+---
+
+# Unity 主线程
+
+LauncherUi 的收包循环跑在名叫 `PVZRH.LauncherUi.Receive` 的后台线程。`OnEvent` 也在这条线程上。Unity / IL2CPP 的大多数对象（`Board`、植物、`GameAPP`）只能在主线程碰，否则轻则拿不到数据，重则直接崩进程。
+
+`LauncherUiPlugin.Load()` 时会挂一个 `MonoBehaviour` 泵，每帧把队列里的工作执行掉。
+
+## 立刻派发：Post
+
+已经在主线程就同步执行；否则排队到下一帧 `Update`。
+
+```csharp
+ui.OnEvent += e =>
+{
+    if (e.WidgetId != "kill") return;
+    LauncherUiClient.PostToUnity(() =>
+    {
+        // 这里可以碰 Unity 对象
+    });
+};
+```
+
+等价写法：`UnityDispatch.Post(...)`。`LauncherUiClient.IsUnityThread` 可用来判断当前是不是主线程。
+
+回调里抛出的异常会打到 `LauncherUiPlugin` 的日志，不会弄死泵。
+
+## 等游戏就绪：RunWhen
+
+插件 `Load()` 往往早于关卡对象。每帧在主线程上问一次「好了没」，好了再跑一次：
+
+```csharp
+ui.RunWhen(
+    ready: () => Board.Instance != null,
+    fill: client =>
+    {
+        var plants = CollectPlantOptions(); // 主线程
+        client.Update("plant", new Dictionary<string, object?>
+        {
+            ["options"] = plants,
+            ["value"] = plants[0].Id,
+        });
+    },
+    timeoutMs: 30_000
+);
+```
+
+静态版同样可用：
+
+```csharp
+UnityDispatch.RunWhen(
+    () => GameAPP.Instance != null,
+    () => FillDropdown(),
+    timeoutMs: 0   // 0 = 一直等
+);
+```
+
+行为细节：
+
+- `ready` 在主线程调用。它抛异常视为「还没好」，不会取消任务。
+- 成功后 `action` 只跑一次。
+- `timeoutMs > 0` 到期后任务被丢掉，**不会**调用 `action`。
+- 同时最多挂 64 个等待任务，再多会丢掉最老的一个。
+
+## 什么可以不回主线程
+
+这些 API 只往 TCP 写 JSON，内部有写锁，任意线程都能调：
+
+- `SetTree` / `Update`
+- `Toast`
+- `SetPanelStyle` / `SetFab` / `SetIconPng`
+- `Close`
+
+所以典型拆法是：**事件线程改托管字段并 Update UI，真正改游戏时再 Post。**
+
+```csharp
+private void OnUiEvent(UiEvent e)
+{
+    if (e.WidgetId != "sun") return;
+    var sun = e.AsInt();
+    _sun = sun;
+    _ui?.Update("sunLabel", new Dictionary<string, object?>
+    {
+        ["text"] = "阳光 " + sun,
+    });
+    LauncherUiClient.PostToUnity(() => ApplySun(sun));
+}
+```
+
+## 泵还没起来
+
+`UnityDispatch.IsReady` 在 `LauncherUiPlugin.Load()` 成功注入之后才为真。其它插件加了 `[BepInDependency(LauncherUiPlugin.PluginGuid)]` 后，自己的 `Load()` 里泵应当已经在。若你在更早的静态构造里 `Post`，任务会进队列，等第一帧再跑。

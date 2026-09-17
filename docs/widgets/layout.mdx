@@ -1,0 +1,143 @@
+---
+sidebar_position: 2
+sidebar_label: 布局
+title: 布局控件
+description: Column、Row、Scroll、Tabs 等容器控件的属性与用法。
+---
+
+# 布局控件
+
+布局控件负责排子节点。它们都可以继续 `.With(...)`、`.Padding(...)`、`.Margin(...)`。
+
+## Column / Row
+
+```csharp
+Ui.Column("root",
+    Ui.Text("a", "上一行"),
+    Ui.Text("b", "下一行")
+).With("gap", 8);
+
+Ui.Row("actions",
+    Ui.Button("ok", "确定"),
+    Ui.Button("cancel", "取消", style: "outline")
+).With("gap", 8);
+```
+
+| 属性 | 默认 | 说明 |
+| --- | --- | --- |
+| `gap` | `6` | 子控件间距，单位 dp |
+| `align` | 见下 | 同时影响拉伸和重力 |
+| `padding` | `0` | 内边距 |
+
+`align` 被 inflater 读了两次：
+
+- 等于 `"stretch"` 时，子控件在交叉轴拉满（Column 拉宽，Row 拉高）。工厂默认不写这个键，inflater 按 `"stretch"` 处理。
+- 作为重力时：`"start"`（默认）、`"center"`、`"end"`。
+
+若写成 `.With("align", "center")`，子控件会居中，同时不再拉伸。
+
+## Scroll
+
+内容超出面板时用滚动容器包一层。默认竖向。
+
+```csharp
+Ui.Scroll("body",
+    Ui.Column("inner", /* 很多子节点 */)
+);
+
+Ui.Scroll("h", Ui.Row("chips", /* ... */))
+    .With("axis", "horizontal");
+```
+
+| 属性 | 默认 | 说明 |
+| --- | --- | --- |
+| `axis` | `"vertical"` | `"horizontal"` 为横向滚动 |
+
+## Wrap
+
+子控件从左到右排列，不够就换行。间距用 `gap`。
+
+```csharp
+Ui.Wrap("tags",
+    Ui.Badge("a", "白天"),
+    Ui.Badge("b", "黑夜"),
+    Ui.Badge("c", "泳池")
+).With("gap", 6);
+```
+
+## Group / Collapsible
+
+带标题的分组。`Collapsible` 永远可折叠；`Group` 默认展开，加上 `.With("collapsible", true)` 后行为相同。
+
+```csharp
+Ui.Group("combat",
+    Ui.Switch("god", "无敌", false),
+    Ui.Switch("instakill", "秒杀", false)
+).With("label", "战斗");
+
+Ui.Collapsible("debug",
+    Ui.Text("log", "仅开发时展开", "caption")
+).With("label", "调试").With("collapsed", true);
+```
+
+| 属性 | 说明 |
+| --- | --- |
+| `title` / `label` | 标题，优先 `title` |
+| `collapsible` | `Group` 设为 `true` 后可折叠 |
+| `collapsed` | `true` 时初始收起 |
+
+折叠时会发 `change`，值为折叠后是否 **展开**（`bool`）。`Update` 传入 `collapsed` 可远程展开/收起。
+
+## Stack
+
+子节点叠在同一个框里，后添加的画在上面。适合角标叠在按钮上。
+
+```csharp
+Ui.Stack("fab-like",
+    Ui.Button("main", "主按钮").Size(120, 40),
+    Ui.Badge("dot", "新")
+);
+```
+
+## Grid
+
+按行优先填格子。列数用 `columns`，默认 2。
+
+```csharp
+Ui.Grid("plants",
+    Ui.Button("p0", "豌豆"),
+    Ui.Button("p1", "向日葵"),
+    Ui.Button("p2", "坚果"),
+    Ui.Button("p3", "土豆雷")
+).With("columns", 2).With("gap", 8);
+```
+
+## Tabs
+
+每个子节点是一页。页标题读子节点的 `title`，否则 `label`，再否则用子节点 `id`。
+
+```csharp
+Ui.Tabs("main",
+    Ui.Column("tab-cheats",
+        Ui.Switch("god", "无敌", false)
+    ).With("label", "作弊"),
+    Ui.Column("tab-about",
+        Ui.Text("ver", "1.0.0", "caption")
+    ).With("label", "关于")
+).With("active", "tab-cheats");
+```
+
+| 属性 | 说明 |
+| --- | --- |
+| `active` | 当前页的子节点 `id` |
+
+点页签会发 `change`，值为被选中页的 `id`。也可以 `Update` 该 Tabs 的 `active` 属性来程序切页。
+
+## Spacer / Divider
+
+```csharp
+Ui.Spacer("gap1", 12);
+Ui.Divider("hr");
+```
+
+`Spacer` 的 `size` 默认 8 dp，宽高都是这个值。`Divider` 是一条 1 dp 高的横线。

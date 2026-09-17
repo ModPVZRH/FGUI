@@ -1,0 +1,143 @@
+---
+sidebar_position: 4
+sidebar_label: 事件与更新
+title: 事件与更新
+description: 处理 click / change / submit，局部更新控件，以及会话生命周期。
+---
+
+# 事件与更新
+
+启动器把玩家操作编成 JSON 发回插件。插件用 `OnEvent` 收，用 `Update` 或 `SetTree` 把状态画回去。
+
+## 订阅
+
+```csharp
+ui.OnEvent += OnUiEvent;
+
+void OnUiEvent(UiEvent e)
+{
+    if (e.WidgetId == "god" && e.Name == "change")
+        _god = e.AsBool();
+}
+```
+
+`UiEvent` 三个字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `WidgetId` | 触发事件的控件 `id` |
+| `Name` | `click`、`change` 或 `submit` |
+| `Value` | `bool`、`double`、`string` 或 `null` |
+
+读取时不要自己 `as`，用转换方法，它们能消化数字 / 字符串混用：
+
+| 方法 | 失败时 |
+| --- | --- |
+| `AsBool(defaultValue = false)` | 返回默认值。`"1"` / `"true"` 为真，`"0"` / `"false"` 为假 |
+| `AsDouble(defaultValue = 0)` | 非数字返回默认值 |
+| `AsInt(defaultValue = 0)` | 超出 `int` 范围返回默认值 |
+| `AsString(defaultValue = "")` | `null` 返回默认值 |
+
+## 事件一览
+
+| 控件 | `Name` | `Value` |
+| --- | --- | --- |
+| Button / IconButton | `click` | `null` |
+| Switch / Checkbox / Radio | `change` | `bool` |
+| RadioGroup / Select / ToggleGroup | `change` | 选项 `id` |
+| List | `change` 然后 `click` | 选项 `id` |
+| Slider / Stepper / NumberField | `change` | `double` |
+| TextField | `change` | 字符串（每改一次） |
+| TextField | `submit` | 字符串（键盘确认） |
+| ColorPicker | `change` | `#RRGGBB` |
+| Collapsible | `change` | 是否展开（`bool`） |
+| Tabs | `change` | 被选中页的 `id` |
+
+`OnEvent` 回调里抛出的异常会被客户端吞掉，不会断开连接。请自己打日志。
+
+:::warning 线程
+回调跑在 TCP 接收线程上。`SetTree` / `Update` / `Toast` 可以在这里调用；碰 Unity 对象不行。见 [Unity 主线程](./threading.mdx)。
+:::
+
+## 局部更新
+
+已经画上去的树，用 `Update` 合并属性，避免整页闪烁：
+
+```csharp
+ui.Update("god", new Dictionary<string, object?>
+{
+    ["value"] = _god,
+    ["label"] = _god ? "无敌（开）" : "无敌（关）",
+});
+
+ui.Update("sun", new Dictionary<string, object?>
+{
+    ["value"] = 9990,
+});
+```
+
+规则：
+
+- 按 `widgetId` 深度优先找第一个匹配节点。
+- 传入的键覆盖旧属性，没提到的键保持不变。
+- `null` / `NaN` / `Infinity` 不会写进 JSON，等于「不要动这个键」。
+- 启动器在应用 `Update` 时不会再回发事件，避免反馈循环。
+
+选项列表也可以整份替换：
+
+```csharp
+ui.Update("plant", new Dictionary<string, object?>
+{
+    ["options"] = plants.Select(p => new UiOption(p.Id, p.Name)).ToList(),
+    ["value"] = plants[0].Id,
+});
+```
+
+## 整树替换
+
+结构变了（增删控件、换页布局）时用 `SetTree`。id 保持稳定的话，玩家正在看的面板会整棵重建。
+
+常见写法：本地先改状态，再画整棵树——简单，面板小时完全够用。
+
+```csharp
+void Rebuild()
+{
+    _ui?.SetTree(
+        Ui.Column("root",
+            Ui.Switch("god", "无敌", _god),
+            Ui.Text("sunLabel", "阳光 " + _sun, "caption")
+        ).With("gap", 8)
+    );
+}
+```
+
+## 生命周期
+
+```csharp
+ui.OnLifecycle += state =>
+{
+    if (state == "destroyed")
+        Log.LogInfo("面板会话结束");
+};
+
+ui.OnDisconnected += () =>
+{
+    Log.LogWarning("TCP 已断开");
+};
+```
+
+| 来源 | 值 | 何时 |
+| --- | --- | --- |
+| `OnLifecycle` | `destroyed` | 启动器关闭会话时尽力通知 |
+| `OnDisconnected` | （无参） | 连接在未被 `Dispose` 的情况下断开，只触发一次 |
+
+协议还预留了 `shown` / `hidden`。当前启动器实现主要会发 `destroyed`；面板被最小化时不一定有 `hidden`。不要依赖「每次打开面板都有 shown」。
+
+## 主动关掉
+
+```csharp
+ui.Close("user-reset");
+ui.Dispose(); // 会先尝试 Close，再关 socket
+```
+
+`Dispose` 之后再 `SetTree` 会抛 `ObjectDisposedException`。

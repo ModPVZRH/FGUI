@@ -1,0 +1,148 @@
+---
+sidebar_position: 4
+sidebar_label: 输入
+title: 输入控件
+description: 按钮、开关、滑条、输入框、下拉与颜色选择器。
+---
+
+# 输入控件
+
+输入控件通过 `OnEvent` 回报。处理事件时注意线程：[事件与更新](../events.mdx)。
+
+## Button / IconButton
+
+```csharp
+Ui.Button("save", "保存");
+Ui.Button("reset", "重置", enabled: true, style: "outline");
+Ui.IconButton("close", "×").With("label", "×");
+```
+
+| 属性 | 说明 |
+| --- | --- |
+| `label` / `text` | 按钮文字 |
+| `enabled` | `false` 时不可点 |
+| `style` | 启动器把 `"outline"` 画成描边，其它值（包括默认 `"filled"`）画成填充 |
+
+事件：`click`，`Value` 为 `null`。
+
+:::info IconButton
+工厂写入的是 `symbol`。inflater 显示 `label` 或 `text`，所以要补 `.With("label", "×")`。
+:::
+
+## Switch / Checkbox
+
+```csharp
+Ui.Switch("god", "无敌", value: false);
+Ui.Checkbox("log", "写日志", value: true, enabled: true);
+```
+
+事件：`change`，值为当前是否打开。用 `e.AsBool()` 读。
+
+## Radio / RadioGroup
+
+单个 `Radio` 只管自己是否选中。互斥请用 `RadioGroup`：
+
+```csharp
+Ui.RadioGroup("diff", "难度", new[]
+{
+    new UiOption("easy", "简单"),
+    new UiOption("normal", "普通"),
+    new UiOption("hard", "困难"),
+}, value: "normal");
+```
+
+事件：`change`，值为选中项的 `id`。用 `e.AsString()` 读。
+
+## Slider / Stepper
+
+```csharp
+Ui.Slider("sun", "阳光", value: 150, min: 0, max: 9990, step: 50);
+Ui.Stepper("count", "数量", value: 1, min: 1, max: 10, step: 1);
+```
+
+| 属性 | 说明 |
+| --- | --- |
+| `value` / `min` / `max` | 数值范围 |
+| `step` | 步进；`<= 0` 时 inflater 按 1 处理 |
+| `enabled` | 滑条可禁用 |
+
+事件：`change`，值为 `double`。`e.AsInt()` / `e.AsDouble()` 均可。滑条在拖动过程中就会连续发事件。
+
+## TextField
+
+```csharp
+Ui.TextField("name", "名称", value: "", placeholder: "输入植物名");
+Ui.TextField("pw", "口令", value: "", password: true);
+Ui.TextField("note", "备注", value: "", multiline: true);
+```
+
+| 事件 | 时机 | 值 |
+| --- | --- | --- |
+| `change` | 每次改字 | 当前字符串 |
+| `submit` | 软键盘确认 | 当前字符串 |
+
+密码模式会遮盖输入。多行模式打开 `TYPE_TEXT_FLAG_MULTI_LINE`。
+
+## NumberField
+
+```csharp
+Ui.NumberField("cd", "冷却", value: 7.5, min: 0, max: 60, step: 0.5);
+```
+
+事件：`change`，值为解析后的 `double`；解析失败时启动器发 `0`。
+
+:::note
+`min` / `max` / `step` 会写进 JSON，但当前 inflater 只用来显示，**不会**在输入时夹紧。需要夹紧请在插件里自己做，再 `Update` 回去。
+:::
+
+## Select
+
+弹出系统列表对话框，选一项。
+
+```csharp
+Ui.Select("plant", "植物", new[]
+{
+    new UiOption("pea", "豌豆射手"),
+    new UiOption("sun", "向日葵"),
+}, value: "pea");
+```
+
+事件：`change`，值为选项 `id`。
+
+下拉的选项如果要等游戏数据就绪，用 `RunWhen` 再 `Update`，见 [Unity 主线程](../threading.mdx)。
+
+## List
+
+可点选的行列表。`subtitle` 会显示在主文字下面。
+
+```csharp
+Ui.List("mods", new[]
+{
+    new UiOption("a", "已启用", "3 个补丁"),
+    new UiOption("b", "已禁用", "上次崩溃"),
+}, value: "a");
+```
+
+点一行会连续发 `change` 和 `click`，值都是该项 `id`。通常监听其中一个即可。
+
+## ColorPicker
+
+```csharp
+Ui.ColorPicker("accent", "强调色", "#00897B");
+```
+
+带预览圆点、十六进制输入和一组预设色板。事件：`change`，值为 `#RRGGBB` 字符串。
+
+## ToggleGroup
+
+分段按钮，同时只能选一项。
+
+```csharp
+Ui.ToggleGroup("mode", "模式", new[]
+{
+    new UiOption("day", "白天"),
+    new UiOption("night", "黑夜"),
+}, value: "day");
+```
+
+事件：`change`，值为选项 `id`。

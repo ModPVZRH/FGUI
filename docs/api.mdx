@@ -1,0 +1,136 @@
+---
+sidebar_position: 8
+sidebar_label: API 一览
+title: API 一览
+description: PVZRH.LauncherUi 公开类型、常量和主要方法。
+---
+
+# API 一览
+
+命名空间一律是 `PVZRH.LauncherUi`。程序集 `PVZRH.LauncherUi`，版本 `1.0.0`，目标 `netstandard2.1`。
+
+## LauncherUiPlugin
+
+BepInEx 插件入口。其它插件依赖它，而不是自己 new 一份客户端基础设施。
+
+| 成员 | 说明 |
+| --- | --- |
+| `PluginGuid` | `"com.pvzrh.launcher.ui"`，给 `[BepInDependency]` 用 |
+| `PluginName` | `"PVZRH Launcher UI"` |
+| `PluginVersion` | `"1.0.0"`，也是客户端默认版本 |
+| `Instance` | `Load()` 之后的单例，之前为 `null` |
+
+`Load()` 会启动 `UnityDispatch` 泵。
+
+## LauncherUiClient
+
+实现 `IDisposable`。一个实例对应一条 TCP 会话。
+
+### 连接
+
+| 方法 | 说明 |
+| --- | --- |
+| `Connect(pluginId, pluginName, pluginVersion = "1.0.0")` | 读 `Paths.BepInExRootPath/launcher-bridge.json` |
+| `ConnectFromBepInEx(bepInExRoot, ...)` | 指定 BepInEx 根目录 |
+| `Connect(discoveryFilePath, ...)` | 指定发现文件路径 |
+
+失败时抛 `IOException`（文件、协议、socket、错误握手）或 `TimeoutException`（5 秒没等到 `hello_ack`）。
+
+### 属性与事件
+
+| 成员 | 说明 |
+| --- | --- |
+| `SessionId` | 启动器在 `hello_ack` 里给的会话 id |
+| `OnEvent` | `Action<UiEvent>` |
+| `OnLifecycle` | `Action<string>`，参数为生命周期状态 |
+| `OnDisconnected` | 非 `Dispose` 导致的断线，只触发一次 |
+| `IsUnityThread` | 泵起来之后，当前是否 Unity 主线程 |
+
+### 发到启动器
+
+| 方法 | 说明 |
+| --- | --- |
+| `SetTree(UiNode root)` | 整树替换 |
+| `Update(widgetId, props)` | 合并一个控件的属性 |
+| `Toast(text)` | 短提示 |
+| `SetPanelStyle(PanelStyle)` | 面板外壳 |
+| `SetFab(label, sizeDp = 48)` | 字母 FAB |
+| `SetFab(FabStyle)` | 完整 FAB 样式 |
+| `SetIconPng(byte[])` | PNG 图标 |
+| `SetIconFile(path)` | 从文件读 PNG |
+| `Close(reason = null)` | 请启动器结束会话 |
+| `Dispose()` | `Close` 然后关 socket |
+
+### 主线程
+
+| 方法 | 说明 |
+| --- | --- |
+| `PostToUnity(Action)` | 静态，排队到下一帧 |
+| `RunWhen(ready, action, timeoutMs = 0)` | 静态，等条件 |
+| `RunWhen(ready, fill, timeoutMs = 0)` | 实例版，回调带上 `this` |
+
+## Ui
+
+静态工厂，见 [控件总览](./widgets/overview.mdx)。返回值都是 `UiNode`。
+
+## UiNode
+
+| 成员 | 说明 |
+| --- | --- |
+| `Id` / `Type` | 控件 id 与 inflater 类型名 |
+| `Props` | `Dictionary<string, object?>` |
+| `Children` | 子节点列表 |
+| `With(key, value)` | 设属性并返回自身 |
+| `Size` / `MinSize` | 宽高 / 最小宽高（dp） |
+| `Padding(...)` / `Margin(...)` | 三种重载：全边、水平垂直、四边 |
+| `TextSize(sp)` | 字号 |
+| `ToJson()` | 紧凑 JSON 对象 |
+
+构造时会拷贝传入的 `props` 和 `children`，`null` 子节点会被丢掉。
+
+## UiOption
+
+`new UiOption(id, label, subtitle = null)`。`ToJson()` 在有 `Subtitle` 时才输出该键。
+
+## UiEvent
+
+`new UiEvent(widgetId, name, value)`。`AsBool` / `AsDouble` / `AsInt` / `AsString` 见 [事件与更新](./events.mdx)。
+
+## PanelStyle / FabStyle
+
+| 类型 | 用途 |
+| --- | --- |
+| `PanelStyle` | 宽、高、圆角、背景、标题栏色、标题色、阴影 |
+| `FabStyle` | 标签、尺寸、背景、`FabShape`、圆角 |
+| `FabShape` | `Circle`、`Rounded`、`Square` |
+
+字段都是可写属性，new 完再赋值即可。
+
+## UnityDispatch
+
+| 成员 | 说明 |
+| --- | --- |
+| `IsMainThread` | 泵记录过主线程 id 且当前就是它 |
+| `IsReady` | 主线程 id 已记录 |
+| `Post(Action)` | 入队或立即跑 |
+| `RunWhen(ready, action, timeoutMs = 0)` | 每帧探测 |
+
+`Start` 由插件内部调用，模组代码不要调。
+
+## BridgeDiscoveryInfo
+
+| 成员 | 说明 |
+| --- | --- |
+| `Protocol` / `Host` / `Port` / `Token` | 发现文件四个字段 |
+| `DefaultPath(bepInExRoot)` | `bepInExRoot/launcher-bridge.json` |
+| `Load(path)` | 读文件；缺 `host` 时用 `127.0.0.1` |
+
+## 协议层（一般不必直接用）
+
+| 类型 | 说明 |
+| --- | --- |
+| `FrameCodec` | 读写 4 字节大端长度帧。`Version = 1`，`MaxFrameBytes = 256 KiB` |
+| `BridgeJson` | 拼 `hello` / `set_tree` / `update` / `toast` / `close` / `set_icon` / `set_panel` / `set_fab` |
+| `ServerMessage` | 解析 `hello_ack` / `event` / `lifecycle` |
+
+这些类型没有第三方 JSON 依赖，解析器只支持对象、数组、字符串、数字、`true` / `false` / `null`，嵌套最多 64 层。

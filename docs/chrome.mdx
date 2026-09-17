@@ -1,0 +1,94 @@
+---
+sidebar_position: 5
+sidebar_label: 面板与悬浮按钮
+title: 面板与悬浮按钮
+description: 设置插件面板尺寸、颜色、FAB 形状和图标。
+---
+
+# 面板与悬浮按钮
+
+每个成功握手的插件在游戏画面上占两块东西：
+
+1. **FAB**：可拖动的悬浮按钮，点一下打开或关闭面板。
+2. **面板**：带标题栏的卡片，里面是你的控件树。标题栏可拖动整块面板。
+
+## 面板
+
+```csharp
+ui.SetPanelStyle(new PanelStyle
+{
+    Width = 360,
+    Height = 480,
+    CornerRadius = 12,
+    Background = "#F51A1C1B",
+    HeaderColor = "#005047",
+    TitleColor = "#B2DFDB",
+    Elevation = 16,
+});
+```
+
+| 属性 | 默认 | 启动器实际夹紧范围 |
+| --- | --- | --- |
+| `Width` | 320 | 200–480 dp |
+| `Height` | 420 | 220–640 dp |
+| `CornerRadius` | 8 | 0–16 dp |
+| `Background` | `null`（主题面板色） | `#RRGGBB` 或 `#AARRGGBB` |
+| `HeaderColor` | `null`（主题容器色） | 同上 |
+| `TitleColor` | `null`（主题标题色） | 同上 |
+| `Elevation` | 16 | 0–24 dp |
+
+颜色写成 `null` 或不赋值，启动器走当前亮/暗主题。非法颜色同样回落默认。
+
+## 悬浮按钮文字与形状
+
+没有图标时，FAB 显示最多 **两个字符** 的标签（多出来的会被启动器截掉）。
+
+```csharp
+ui.SetFab("CM"); // 标签 + 默认 48 dp
+
+ui.SetFab(new FabStyle
+{
+    Label = "CM",
+    Size = 52,
+    Background = "#00897B",
+    Shape = FabShape.Rounded,
+    CornerRadius = 12,
+});
+```
+
+| 属性 | 默认 | 说明 |
+| --- | --- | --- |
+| `Label` | `""` | 无图标时的字母。空则用插件名推一到两个字 |
+| `Size` | 48 | 夹紧到 36–64 dp |
+| `Background` | `null` | 主题主色；有图标时默认全透明 |
+| `Shape` | `Circle` | `Circle` / `Rounded` / `Square` |
+| `CornerRadius` | 12 | 仅 `Rounded` 有意义，夹紧到 0–24 |
+
+`Background = "#00000000"` 可以做成完全透明的图标按钮。
+
+## 图标
+
+PNG 透明通道会保留。设置后 FAB 改显示这张图；没设就继续用字母。
+
+```csharp
+ui.SetIconPng(pngBytes);
+ui.SetIconFile("/path/to/icon.png");
+```
+
+`SetIconFile` 只是读文件再调用 `SetIconPng`。路径必须是游戏进程可读的。
+
+协议上图标以 `image/png` + Base64 发送。体积受帧上限约束（256 KiB JSON 帧），图标请压小。
+
+## 建议顺序
+
+握手成功后立刻设 chrome，再 `SetTree`：
+
+```csharp
+var ui = LauncherUiClient.Connect("com.example.mymod", "My Mod");
+ui.SetIconPng(iconBytes);
+ui.SetFab(new FabStyle { Label = "MM", Shape = FabShape.Circle });
+ui.SetPanelStyle(new PanelStyle { Width = 320, Height = 440 });
+ui.SetTree(BuildTree());
+```
+
+后调用的 `SetPanelStyle` / `SetFab` / `SetIconPng` 会重建外壳，已经打开的面板会按新样式重挂，内容树尽量保留。

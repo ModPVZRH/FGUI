@@ -1,0 +1,77 @@
+---
+sidebar_position: 5
+sidebar_label: 通用样式
+title: 通用样式
+description: 尺寸、边距、字号、gap 等所有控件都能用的属性。
+---
+
+# 通用样式
+
+`UiNode` 上的链式方法最终都写进 `props`。启动器 `UiLayout` 在 inflate 时读取它们。长度单位除 `textSize` 外都是 **dp**，`textSize` 是 **sp**。
+
+## 尺寸
+
+```csharp
+Ui.Button("wide", "全宽").Size(width: 280, height: 40);
+Ui.Image("icon", src, 32, 32).MinSize(32, 32);
+node.With("maxWidth", 200);
+```
+
+| 方法 / 属性 | 键 | 说明 |
+| --- | --- | --- |
+| `Size(w, h)` | `width` / `height` | `0` 表示不限制，走控件默认 |
+| `MinSize(w, h)` | `minWidth` / `minHeight` | `0` 表示不设最小值 |
+| `.With("maxWidth", n)` | `maxWidth` / `maxHeight` | 目前只对 `TextView` / `ImageView` 生效 |
+
+## 内边距
+
+```csharp
+node.Padding(12);                 // 四边
+node.Padding(12, 8);              // 水平, 垂直
+node.Padding(8, 4, 8, 12);        // 左, 上, 右, 下
+```
+
+对应键：`padding`，`paddingH` / `paddingV`，`paddingLeft` / `Top` / `Right` / `Bottom`。启动器还认 `paddingStart` / `paddingEnd`（覆盖左右）。
+
+更具体的键覆盖更宽的键：单边 > 水平/垂直 > 统一 `padding`。
+
+## 外边距
+
+```csharp
+node.Margin(8);
+node.Margin(8, 4);
+node.Margin(0, 8, 0, 0);
+```
+
+键名规则与 padding 相同，前缀换成 `margin`。Margin 打在子控件的 `LayoutParams` 上，由父布局生效。
+
+## 字号
+
+```csharp
+Ui.Text("big", "警告", "body").TextSize(18);
+```
+
+只对最终是 `TextView` 的控件有意义（文本、按钮文字、徽章等）。
+
+## 任意属性
+
+```csharp
+node.With("gap", 8);
+node.With("enabled", false);
+node.With("label", "新标题");
+```
+
+`null`、`NaN`、`Infinity` 写入后序列化时会被跳过，相当于「别改这个键」。
+
+## 颜色字符串
+
+面板、FAB、颜色选择器使用：
+
+- `#RRGGBB`
+- `#AARRGGBB`
+
+非法字符串会被启动器忽略并回落到主题默认色。
+
+## 主题
+
+控件颜色跟启动器的亮/暗色走（和启动器设置页同一套 Material 调色）。插件一般不用自己填正文颜色；要品牌色请改 [面板与悬浮按钮](../chrome.mdx)，或用 `ColorPicker` 让玩家选。

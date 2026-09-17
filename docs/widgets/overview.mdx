@@ -1,0 +1,99 @@
+---
+sidebar_position: 1
+sidebar_label: 总览
+title: 控件总览
+description: LauncherUi 控件类型、事件一览，以及和 Android inflater 的对应关系。
+---
+
+# 控件总览
+
+`Ui` 是一组流畅工厂。每个方法生成一个 `UiNode`，`Type` 字符串必须和启动器 `UiInflater` 的目录一致。
+
+```csharp
+Ui.Column("root",
+    Ui.Text("t", "Cheat Menu", "title"),
+    Ui.Switch("god", "无敌", false),
+    Ui.Slider("sun", "阳光", 150, 0, 9990, 50)
+).With("gap", 8);
+```
+
+未知的 `type` 会在面板里显示成 `[type]` 文本，不会抛异常。
+
+## 布局
+
+| 工厂 | `type` | 作用 |
+| --- | --- | --- |
+| `Ui.Column` | `column` | 垂直排列 |
+| `Ui.Row` | `row` | 水平排列 |
+| `Ui.Scroll` | `scroll` | 可滚动容器 |
+| `Ui.Wrap` | `wrap` | 自动换行 |
+| `Ui.Group` | `group` | 带标题的分组 |
+| `Ui.Collapsible` | `collapsible` | 可折叠分组 |
+| `Ui.Stack` | `stack` | 重叠堆叠，后添加的在上 |
+| `Ui.Grid` | `grid` | 网格，默认 2 列 |
+| `Ui.Tabs` | `tabs` | 选项卡，每个子节点一页 |
+| `Ui.Spacer` | `spacer` | 固定空白 |
+| `Ui.Divider` | `divider` | 分隔线 |
+
+详见 [布局控件](./layout.mdx)。
+
+## 展示
+
+| 工厂 | `type` | 作用 |
+| --- | --- | --- |
+| `Ui.Text` | `text` | 静态文字 |
+| `Ui.Markdown` | `markdown` | 简化 Markdown |
+| `Ui.Image` | `image` | 图片（data URI 或本地文件） |
+| `Ui.Progress` | `progress` | 进度条 |
+| `Ui.Badge` | `badge` | 状态芯片 |
+| `Ui.Icon` | `icon` | 符号 / 短文本图标 |
+
+详见 [展示控件](./display.mdx)。
+
+## 输入
+
+| 工厂 | `type` | 事件 | 值类型 |
+| --- | --- | --- | --- |
+| `Ui.Button` | `button` | `click` | 无 |
+| `Ui.IconButton` | `icon_button` | `click` | 无 |
+| `Ui.Switch` | `switch` | `change` | `bool` |
+| `Ui.Checkbox` | `checkbox` | `change` | `bool` |
+| `Ui.Radio` | `radio` | `change` | `bool` |
+| `Ui.RadioGroup` | `radio_group` | `change` | 选项 `id`（字符串） |
+| `Ui.Slider` | `slider` | `change` | `double` |
+| `Ui.Stepper` | `stepper` | `change` | `double` |
+| `Ui.TextField` | `text_field` | `change` / `submit` | 字符串 |
+| `Ui.NumberField` | `number_field` | `change` | `double` |
+| `Ui.Select` | `select` | `change` | 选项 `id` |
+| `Ui.List` | `list` | `change` + `click` | 选项 `id` |
+| `Ui.ColorPicker` | `color_picker` | `change` | `#RRGGBB` |
+| `Ui.ToggleGroup` | `toggle_group` | `change` | 选项 `id` |
+
+详见 [输入控件](./input.mdx)。尺寸、边距、`gap` 等见 [通用样式](./styling.mdx)。
+
+## 选项 `UiOption`
+
+`RadioGroup`、`Select`、`List`、`ToggleGroup` 共用：
+
+```csharp
+new UiOption("easy", "简单")
+new UiOption("hard", "困难", "僵尸更多")
+```
+
+- `Id`：选中后写回事件里的值
+- `Label`：界面上的主文字
+- `Subtitle`：可选副标题（列表会显示）
+
+启动器也接受纯字符串数组；C# 侧请始终用 `UiOption`。
+
+## 和 Android 侧不完全同名的属性
+
+C# 工厂写入的属性名，有几处和 inflater 实际读取的键不同。按下面写才能在真机上看到效果：
+
+| 控件 | C# 工厂写入 | 启动器实际用来显示的键 | 建议 |
+| --- | --- | --- | --- |
+| `Icon` | `symbol` | `text` | `.With("text", "★")` |
+| `IconButton` | `symbol` | `label` 或 `text` | `.With("label", "×")` |
+| `Button` 描边 | `style: "outlined"` | `style == "outline"` | `style: "outline"` |
+
+其余工厂方法和 inflater 是对齐的。
